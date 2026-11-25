@@ -1,11 +1,18 @@
 import os
 import tempfile
+from urllib.parse import urlparse
 
 from flask import Flask, request, render_template_string
 
 from pipeline import add_song
 
 app = Flask(__name__)
+
+VALID_YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}
+
+
+def is_youtube_url(url: str) -> bool:
+    return urlparse(url).hostname in VALID_YOUTUBE_HOSTS
 
 FORM_HTML = """
 <!doctype html>
@@ -29,23 +36,27 @@ def index():
 
     if request.method == "POST":
         url = request.form["url"]
-        song_name = request.form["song_name"]
-        artist = request.form["artist"]
-        album = request.form["album"]
-        cover_art_file = request.files["cover_art"]
 
-        suffix = os.path.splitext(cover_art_file.filename)[1]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            cover_art_path = tmp.name
-        cover_art_file.save(cover_art_path)
+        if not is_youtube_url(url):
+            message = "That doesn't look like a valid YouTube link. Please add a valid link."
+        else:
+            song_name = request.form["song_name"]
+            artist = request.form["artist"]
+            album = request.form["album"]
+            cover_art_file = request.files["cover_art"]
 
-        try:
-            add_song(url, song_name, artist, album, cover_art_path)
-            message = f"Added \"{song_name}\" to Apple Music."
-        except Exception as e:
-            message = f"Something went wrong: {e}"
-        finally:
-            os.remove(cover_art_path)
+            suffix = os.path.splitext(cover_art_file.filename)[1]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                cover_art_path = tmp.name
+            cover_art_file.save(cover_art_path)
+
+            try:
+                add_song(url, song_name, artist, album, cover_art_path)
+                message = f"Added \"{song_name}\" to Apple Music."
+            except Exception as e:
+                message = f"Something went wrong: {e}"
+            finally:
+                os.remove(cover_art_path)
 
     return render_template_string(FORM_HTML, message=message)
 
